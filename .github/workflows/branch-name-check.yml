@@ -1,0 +1,35 @@
+name: Enforce Branch Naming Convention
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+  push:
+    branches:
+      - '**'  # Run on all branch pushes
+
+jobs:
+  validate_branch_name:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check branch name
+        run: |
+          BRANCH_NAME="${{ github.head_ref || github.ref_name }}"
+          echo "🔍 Branch name: $BRANCH_NAME"
+
+          # Skip for main (or others you want to exempt)
+          if [[ "$BRANCH_NAME" == "main" || "$BRANCH_NAME" == "develop" ]]; then
+            echo "ℹ️ Skipping branch name check for '$BRANCH_NAME'"
+            exit 0
+          fi
+
+          PATTERN="^(build|chore|ci|deps|doc|docs|feat|fix|perf|ref|refactor|revert|style|test|tests)/[0-9]+-[a-z0-9-]+$"
+
+          if [[ "$BRANCH_NAME" =~ $PATTERN ]]; then
+            echo "✅ Branch name is valid."
+          else
+            echo "❌ Branch name is invalid!"
+            echo "🔧 Expected format: <type>/<issue-id>-<short-description>"
+            echo "   Example: feat/123-login-page"
+            echo "📘 See README.md for branch naming rules."
+            exit 1
+          fi
