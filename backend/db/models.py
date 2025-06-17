@@ -1,12 +1,13 @@
 from datetime import datetime, timezone
 
-from database import Base
 from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
 
+from .database import Base
 
-class Page(Base):
-    __tablename__ = "pages"
+
+class Note(Base):
+    __tablename__ = "notes"
 
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String, nullable=False)
@@ -31,12 +32,15 @@ class Page(Base):
 class Link(Base):
     __tablename__ = "links"
 
-    source_page_id = Column(Integer, ForeignKey("pages.id"), primary_key=True)
-    target_page_id = Column(Integer, ForeignKey("pages.id"), primary_key=True)
+    id = Column(Integer, primary_key=True, index=True)
+    url = Column(String, nullable=False)
+
+    source_page_id = Column(Integer, ForeignKey("notes.id"), nullable=True)
+    target_page_id = Column(Integer, ForeignKey("notes.id"), nullable=True)
 
     source_page = relationship(
-        "Page", foreign_keys=[source_page_id], back_populates="outgoing_links"
+        "Note", back_populates="outgoing_links", foreign_keys=[source_page_id]
     )
     target_page = relationship(
-        "Page", foreign_keys=[target_page_id], back_populates="incoming_links"
+        "Note", back_populates="incoming_links", foreign_keys=[target_page_id]
     )
