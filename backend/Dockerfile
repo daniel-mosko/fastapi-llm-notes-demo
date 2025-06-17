@@ -3,6 +3,8 @@ FROM python:3.12.11-slim
 
 WORKDIR /app
 
+RUN apt-get update
+
 COPY requirements.txt .
 
 # --no-cache-dir to disable keeping downloaded packages
