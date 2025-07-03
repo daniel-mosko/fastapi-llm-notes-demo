@@ -1,17 +1,52 @@
-from backend.api.main import api_router
-from backend.config import api_version
-from backend.db.database import Base, engine
+import time
+
+from backend.api.v1.router import api_router
+from backend.config.logger import get_logger, setup_logging
+from backend.config.settings import settings
 from fastapi import FastAPI
 
-app = FastAPI()
+setup_logging(log_level=settings.log_level, log_format=settings.log_format)
 
-app.include_router(api_router, prefix=f"/api/{api_version}")
+logger = get_logger(__name__)
 
-# Initialize DB schema
-Base.metadata.create_all(bind=engine)
+app = FastAPI(
+    title=settings.app_name,
+    description=settings.description,
+    version=settings.app_version,
+    docs_url=settings.docs_url,
+    redoc_url=settings.redoc_url,
+    openapi_url=settings.openapi_url,
+)
+
+app.include_router(api_router, prefix=f"{settings.api_prefix}")
 
 
-# if __name__ == "__main__":
-#     import uvicorn
-#
-#     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+@app.get("/", tags=["Info"])
+async def root():
+    """Root endpoint with API information."""
+    return {
+        "message": f"Welcome to {settings.app_name}",
+        "version": settings.app_version,
+        "docs_url": settings.docs_url,
+        "redocs_url": settings.redoc_url,
+        "health_check": "/health",
+    }
+
+
+@app.get("/version", tags=["Info"])
+async def get_version():
+    """Get application version information."""
+    return {
+        "app_name": settings.app_name,
+        "version": settings.app_version,
+    }
+
+
+@app.get("/health", tags=["Health"])
+async def health_check():
+    """Health check endpoint."""
+    return {
+        "status": "healthy",
+        "version": settings.app_version,
+        "timestamp": time.time(),
+    }
