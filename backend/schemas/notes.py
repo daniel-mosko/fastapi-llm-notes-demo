@@ -1,5 +1,4 @@
 import datetime
-import uuid
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict
@@ -14,12 +13,15 @@ class BaseNoteSchema(BaseModel):
     title: str
     content: str
 
+
 class NoteResponseSchema(BaseNoteSchema):
-    id: uuid.UUID
+    id: int
     created_at: Optional[datetime.datetime]
     updated_at: Optional[datetime.datetime]
+    hash: Optional[str]
 
     model_config = ConfigDict(from_attributes=True)
+
 
 class SimilarNotesSchema(BaseModel):
     note: NoteResponseSchema

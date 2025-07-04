@@ -1,4 +1,4 @@
-from backend.api.routes import notes
+from backend.api.v1.endpoints import notes
 from fastapi import APIRouter
 
 api_router = APIRouter()
