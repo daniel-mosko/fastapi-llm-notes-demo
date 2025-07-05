@@ -3,7 +3,12 @@ from typing import Any, List
 
 import numpy as np
 from backend.models.notes import Notes, NotesContentEmbeddings
-from backend.schemas.notes import NoteResponseSchema, SimilarNotesSchema
+from backend.schemas.notes import (
+    BaseNoteSchema,
+    NoteResponseSchema,
+    PromptSchema,
+    SimilarNotesSchema,
+)
 from sentence_transformers import SentenceTransformer
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -49,7 +54,9 @@ async def get_similar_notes(
         note_id: sum(sims) / len(sims) for note_id, sims in note_to_sims.items()
     }
 
-    sorted_notes = sorted(note_scores.items(), key=lambda x: x[1], reverse=True)[:top_k]
+    sorted_notes = sorted(
+        note_scores.items(), key=lambda x: x[1], reverse=True
+    )[:top_k]
 
     # fetch notes from db
     similar_notes = []
@@ -57,21 +64,30 @@ async def get_similar_notes(
         note = await db.get(Notes, note_id)
         if note:
             note_response = NoteResponseSchema.model_validate(note)
-            similar_notes.append(SimilarNotesSchema(note=note_response, score=score))
+            similar_notes.append(
+                SimilarNotesSchema(note=note_response, score=score)
+            )
 
     return similar_notes
 
 
-def get_note_embedding(
-    note,
+def get_embedding(
+    query: Notes | BaseNoteSchema | PromptSchema,
 ) -> tuple[list[int], list[int], list[Any]]:
     """
     Split note to chunks, create embeddings using sentence sentence-transformers
     returns chunk_ids, sentences_len, note_embeddings
     """
-    note = (note.title + ". " + note.content).lower()
+
+    text_to_embed: str
+    if isinstance(query, Notes) or isinstance(query, BaseNoteSchema):
+        text_to_embed = (f"{query.title}. {query.content}").lower()
+    else:
+        text_to_embed = (query.message).lower()
+
     matches = [
-        (m.start(), m.group(0).strip()) for m in re.finditer(r"[^.!?]+", note)
+        (m.start(), m.group(0).strip())
+        for m in re.finditer(r"[^.!?]+", text_to_embed)
     ]  # Split by end of sentences (.!?)
     sentences = np.array(
         [(start_index, sentence.strip()) for start_index, sentence in matches]

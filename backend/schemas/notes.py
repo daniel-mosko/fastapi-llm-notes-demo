@@ -23,6 +23,14 @@ class NoteResponseSchema(BaseNoteSchema):
     model_config = ConfigDict(from_attributes=True)
 
 
+class PromptSchema(BaseModel):
+    message: str
+
+
+class SummarizeNotesSchema(BaseModel):
+    summary: str
+
+
 class SimilarNotesSchema(BaseModel):
     note: NoteResponseSchema
     score: float

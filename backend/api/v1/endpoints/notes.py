@@ -1,12 +1,31 @@
 from typing import List
 
+import httpx
+from backend.ai.chat_requests import handle_gemini_request
+from backend.ai.prompt_templates import (
+    ask_from_similar_notes_prompt,
+    summarize_prompt,
+)
 from backend.api.deps import get_db_session
 from backend.config.logger import get_logger
 from backend.models.notes import Notes, NotesContentEmbeddings
-from backend.schemas.notes import BaseNoteSchema, NoteResponseSchema, SimilarNotesSchema
-from backend.services.sentence_processing import get_note_embedding, get_similar_notes
+from backend.schemas.notes import (
+    BaseNoteSchema,
+    NoteResponseSchema,
+    PromptSchema,
+    SimilarNotesSchema,
+    SummarizeNotesSchema,
+)
+from backend.services.notes import get_embedding, get_similar_notes
 from backend.utils.hashing import compute_note_hash, hash_has_changed
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    HTTPException,
+    Response,
+    status,
+)
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,7 +35,9 @@ router = APIRouter(prefix="/notes", tags=["Notes"])
 
 
 @router.get("/{note_id}", response_model=NoteResponseSchema)
-async def get_note_by_id(note_id: int, db: AsyncSession = Depends(get_db_session)):
+async def get_note_by_id(
+    note_id: int, db: AsyncSession = Depends(get_db_session)
+):
     """Get note from DB by id"""
     note = await db.get(Notes, note_id)
     if not note:
@@ -61,7 +82,7 @@ async def create_note(
 
 async def create_embedding(note: Notes, db: AsyncSession):
     """Split note to chunks, create embeddings and push to DB"""
-    chunk_ids, sentences_len, note_embeddings = get_note_embedding(note)
+    chunk_ids, sentences_len, note_embeddings = get_embedding(note)
 
     # Add all chunks embeddings to DB
     for i in range(len(chunk_ids)):
@@ -121,9 +142,11 @@ async def update_note(
 
 @router.post("/search", response_model=List[SimilarNotesSchema])
 async def similar_note(
-    note: BaseNoteSchema, db: AsyncSession = Depends(get_db_session)
+    input_item: BaseNoteSchema | PromptSchema,
+    db: AsyncSession = Depends(get_db_session),
 ):
-    _, _, note_embedding = get_note_embedding(note)
+    """Finds semantically similar notes to input_item [Query or Note] in the database"""
+    _, _, note_embedding = get_embedding(input_item)
     result = await db.execute(select(NotesContentEmbeddings))
     db_embeddings = list(result.scalars())
 
@@ -131,8 +154,45 @@ async def similar_note(
     return similar_notes
 
 
+@router.post("/ask_similar", response_model=SummarizeNotesSchema)
+async def ask_from_similar_notes(
+    prompt: PromptSchema, db: AsyncSession = Depends(get_db_session)
+):
+    similar_notes = await similar_note(prompt, db)
+    async with httpx.AsyncClient() as client:
+        sys_prompt = ask_from_similar_notes_prompt(
+            prompt.message, similar_notes
+        )
+        response = await handle_gemini_request(client, sys_prompt)
+
+    if response:
+        return SummarizeNotesSchema(summary=response)
+
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="Error getting the summary",
+    )
+
+
+@router.post("/summarize", response_model=SummarizeNotesSchema)
+async def summarize_note(note: BaseNoteSchema):
+    async with httpx.AsyncClient() as client:
+        sys_prompt = summarize_prompt(note)
+        summary = await handle_gemini_request(client, sys_prompt)
+
+    if summary:
+        return SummarizeNotesSchema(summary=summary)
+
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="Error getting the summary",
+    )
+
+
 @router.delete("/{note_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_note_by_id(note_id: int, db: AsyncSession = Depends(get_db_session)):
+async def delete_note_by_id(
+    note_id: int, db: AsyncSession = Depends(get_db_session)
+):
     try:
         await db.execute(
             delete(NotesContentEmbeddings).where(

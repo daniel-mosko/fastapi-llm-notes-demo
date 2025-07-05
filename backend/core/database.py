@@ -22,17 +22,26 @@ class SessionManager:
         self.engine: Optional[AsyncEngine] = None
         self.session_factory: Optional[async_sessionmaker[AsyncSession]] = None
 
-    def init_db(self, database_url: Optional[str] = None) -> None:
+    def init_db(
+        self, database_url: Optional[str] = None, is_test=False
+    ) -> None:
         """Initialize the database engine and session factory."""
         logger.info("Initializing DB")
         if not database_url:
-            database_url = os.getenv("DATABASE_URL")
+            if is_test:
+                database_url = os.getenv("DATABASE_TEST_URL")
+            else:
+                database_url = os.getenv("DATABASE_URL")
             if not database_url:
                 raise RuntimeError("DATABASE_URL environment variable not set")
 
         # Ensure async database URL
         if not database_url.startswith(
-            ("postgresql+asyncpg://", "sqlite+aiosqlite://", "mysql+aiomysql://")
+            (
+                "postgresql+asyncpg://",
+                "sqlite+aiosqlite://",
+                "mysql+aiomysql://",
+            )
         ):
             logger.warning(
                 f"Database URL might not be async compatible: {database_url}"
