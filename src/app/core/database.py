@@ -2,7 +2,7 @@ import os
 from collections.abc import AsyncGenerator
 from typing import Optional
 
-from backend.config.logger import get_logger
+from app.config.logger import get_logger
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,

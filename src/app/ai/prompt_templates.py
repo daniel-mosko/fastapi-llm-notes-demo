@@ -1,6 +1,4 @@
-from typing import List
-
-from backend.schemas.notes import BaseNoteSchema, NoteResponseSchema
+from app.schemas.notes import BaseNoteSchema, NoteResponseSchema
 
 
 def summarize_prompt(note: BaseNoteSchema) -> str:
@@ -8,6 +6,6 @@ def summarize_prompt(note: BaseNoteSchema) -> str:
 
 
 def ask_from_similar_notes_prompt(
-    query: str, notes: List[NoteResponseSchema]
+    query: str, notes: list[NoteResponseSchema]
 ) -> str:
     return f"Answer question based only on following notes, if it isn't relevant, write that nothing was found. Respond in plain text:\n QUESTION: {query},\n NOTES: {notes}"

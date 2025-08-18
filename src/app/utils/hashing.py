@@ -1,7 +1,7 @@
 import hashlib
 
-from backend.models.notes import Notes
-from backend.schemas.notes import BaseNoteSchema
+from app.models.notes import Notes
+from app.schemas.notes import BaseNoteSchema
 
 
 def compute_note_hash(note: Notes | BaseNoteSchema) -> str:

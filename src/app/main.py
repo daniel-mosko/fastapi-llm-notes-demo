@@ -1,8 +1,8 @@
 import time
 
-from backend.api.v1.router import api_router
-from backend.config.logger import get_logger, setup_logging
-from backend.config.settings import settings
+from app.api.v1.router import api_router
+from app.config.logger import get_logger, setup_logging
+from app.config.settings import settings
 from fastapi import FastAPI
 
 setup_logging(log_level=settings.log_level, log_format=settings.log_format)

@@ -2,8 +2,8 @@ import re
 from typing import Any, List
 
 import numpy as np
-from backend.models.notes import Notes, NotesContentEmbeddings
-from backend.schemas.notes import (
+from app.models.notes import Notes, NotesContentEmbeddings
+from app.schemas.notes import (
     BaseNoteSchema,
     NoteResponseSchema,
     PromptSchema,

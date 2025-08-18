@@ -1,5 +1,3 @@
-from typing import List
-
 from pydantic import BaseModel
 
 
@@ -8,7 +6,7 @@ class GeminiPart(BaseModel):
 
 
 class GeminiContent(BaseModel):
-    parts: List[GeminiPart]
+    parts: list[GeminiPart]
 
 
 class GeminiCandidate(BaseModel):
@@ -16,7 +14,7 @@ class GeminiCandidate(BaseModel):
 
 
 class GeminiResponse(BaseModel):
-    candidates: List[GeminiCandidate]
+    candidates: list[GeminiCandidate]
 
 
 class OpenAIChatMessage(BaseModel):
@@ -28,4 +26,4 @@ class OpenAIChatChoice(BaseModel):
 
 
 class OpenAIResponse(BaseModel):
-    choices: List[OpenAIChatChoice]
+    choices: list[OpenAIChatChoice]

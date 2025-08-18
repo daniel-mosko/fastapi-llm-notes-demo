@@ -1,6 +1,6 @@
 from collections.abc import AsyncGenerator
 
-from backend.core.database import session_manager
+from app.core.database import session_manager
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
