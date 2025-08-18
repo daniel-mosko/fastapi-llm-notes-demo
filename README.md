@@ -1,7 +1,6 @@
 ## 📝 **FastAPI Notes: Semantic Search with pgvector and Google Gemini**
 
-A FastAPI application that stores and queries note embeddings using **Postgres + pgvector** and uses **free Gemini model**.  
-Provides endpoints to retrieve and summarize the **top k most relevant notes** for a query.  
+A FastAPI application that stores and queries note embeddings using **Postgres + pgvector** and uses **free Gemini model**. Provides endpoints to retrieve and summarize the **top k most relevant notes** for a query.  
 
 ### ⚡ Features
 - 🗂 Semantic note storage with **pgvector**  
