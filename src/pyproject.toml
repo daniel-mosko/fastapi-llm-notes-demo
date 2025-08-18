@@ -1,7 +1,7 @@
 [project]
-name = "cognito"
+name = "fastapi-llm-notes-demo"
 version = "0.1.0"
-description = "Add your description here"
+description = "FastAPI Notes: Semantic Search with pgvector and Google Gemini"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
