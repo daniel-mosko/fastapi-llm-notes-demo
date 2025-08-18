@@ -1,23 +1,23 @@
 from typing import List
 
 import httpx
-from backend.ai.chat_requests import handle_gemini_request
-from backend.ai.prompt_templates import (
+from app.ai.chat_requests import handle_gemini_request
+from app.ai.prompt_templates import (
     ask_from_similar_notes_prompt,
     summarize_prompt,
 )
-from backend.api.deps import get_db_session
-from backend.config.logger import get_logger
-from backend.models.notes import Notes, NotesContentEmbeddings
-from backend.schemas.notes import (
+from app.api.deps import get_db_session
+from app.config.logger import get_logger
+from app.models.notes import Notes, NotesContentEmbeddings
+from app.schemas.notes import (
     BaseNoteSchema,
     NoteResponseSchema,
     PromptSchema,
     SimilarNotesSchema,
     SummarizeNotesSchema,
 )
-from backend.services.notes import get_embedding, get_similar_notes
-from backend.utils.hashing import compute_note_hash, hash_has_changed
+from app.services.notes import get_embedding, get_similar_notes
+from app.utils.hashing import compute_note_hash, hash_has_changed
 from fastapi import (
     APIRouter,
     BackgroundTasks,
