@@ -1,7 +1,14 @@
 import re
-from typing import Any, List
+from typing import Any
 
 import numpy as np
+from fastapi import (
+    HTTPException,
+    status,
+)
+from sentence_transformers import SentenceTransformer
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.models.notes import Notes, NotesContentEmbeddings
 from app.schemas.notes import (
     BaseNoteSchema,
@@ -9,18 +16,28 @@ from app.schemas.notes import (
     PromptSchema,
     SimilarNotesSchema,
 )
-from sentence_transformers import SentenceTransformer
-from sqlalchemy.ext.asyncio import AsyncSession
 
 model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
 
 
+async def create_note(note: BaseNoteSchema, db: AsyncSession) -> Notes:
+    db_note = Notes(title=note.title, content=note.content, hash="temp_hash")
+    db.add(db_note)
+    await db.commit()
+    await db.refresh(db_note)
+    return db_note
+
+
+async def get_note_by_id(note_id: int, db: AsyncSession) -> Notes | None:
+    return await db.get(Notes, note_id)
+
+
 async def get_similar_notes(
-    query_embeddings: List[Any],
-    db_sentence_embeddings: List[NotesContentEmbeddings],
+    query_embeddings: list[Any],
+    db_sentence_embeddings: list[NotesContentEmbeddings],
     db: AsyncSession,
     top_k=5,
-) -> List[NoteResponseSchema]:
+) -> list[NoteResponseSchema]:
     """
     query_embeddings: numpy array (m x d), m sentences in query note
     db_sentence_embeddings: list of objects with .embedding (d,), .note_id
@@ -71,6 +88,32 @@ async def get_similar_notes(
     return similar_notes
 
 
+async def create_embedding(note: Notes, db: AsyncSession):
+    """Split note to chunks, create embeddings and push to DB"""
+    chunk_ids, sentences_len, note_embeddings = get_embedding(note)
+
+    # Add all chunks embeddings to DB
+    for i in range(len(chunk_ids)):
+        note_content_embedding = NotesContentEmbeddings(
+            note_id=note.id,
+            chunk_index=i,
+            embedding=note_embeddings[i],
+            chunk_start_position=chunk_ids[i],
+            chunk_end_position=chunk_ids[i] + sentences_len[i],
+        )
+
+        db.add(note_content_embedding)
+        try:
+            await db.commit()
+            await db.refresh(note_content_embedding)
+        except Exception as e:
+            await db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Error creating note embedding: {e!s}",
+            )
+
+
 def get_embedding(
     query: Notes | BaseNoteSchema | PromptSchema,
 ) -> tuple[list[int], list[int], list[Any]]:
@@ -88,14 +131,12 @@ def get_embedding(
     matches = [
         (m.start(), m.group(0).strip())
         for m in re.finditer(r"[^.!?]+", text_to_embed)
-    ]  # Split by end of sentences (.!?)
+    ]
     sentences = np.array(
         [(start_index, sentence.strip()) for start_index, sentence in matches]
     )
 
-    model.max_seq_length = len(
-        max(sentences[:, 1], key=len)
-    )  # So that max len sentence can be encoded correctly
+    model.max_seq_length = len(max(sentences[:, 1], key=len))
 
     # (idx, vec)
     embeddings = model.encode(sentences[:, 1])

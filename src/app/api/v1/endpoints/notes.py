@@ -1,26 +1,6 @@
-from typing import List
-
 import httpx
-from app.ai.chat_requests import handle_gemini_request
-from app.ai.prompt_templates import (
-    ask_from_similar_notes_prompt,
-    summarize_prompt,
-)
-from app.api.deps import get_db_session
-from app.config.logger import get_logger
-from app.models.notes import Notes, NotesContentEmbeddings
-from app.schemas.notes import (
-    BaseNoteSchema,
-    NoteResponseSchema,
-    PromptSchema,
-    SimilarNotesSchema,
-    SummarizeNotesSchema,
-)
-from app.services.notes import get_embedding, get_similar_notes
-from app.utils.hashing import compute_note_hash, hash_has_changed
 from fastapi import (
     APIRouter,
-    BackgroundTasks,
     Depends,
     HTTPException,
     Response,
@@ -29,6 +9,28 @@ from fastapi import (
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.ai.chat_requests import handle_gemini_request
+from app.ai.prompt_templates import (
+    ask_from_similar_notes_prompt,
+    summarize_prompt,
+)
+from app.config.logger import get_logger
+from app.core.database import session_manager
+from app.models.notes import Notes, NotesContentEmbeddings
+from app.schemas.notes import (
+    BaseNoteSchema,
+    NoteResponseSchema,
+    PromptSchema,
+    SimilarNotesSchema,
+    SummarizeNotesSchema,
+)
+from app.services.notes import (
+    create_embedding,
+    get_embedding,
+    get_similar_notes,
+)
+from app.utils.hashing import compute_note_hash, hash_has_changed
+
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/notes", tags=["Notes"])
@@ -36,7 +38,7 @@ router = APIRouter(prefix="/notes", tags=["Notes"])
 
 @router.get("/{note_id}", response_model=NoteResponseSchema)
 async def get_note_by_id(
-    note_id: int, db: AsyncSession = Depends(get_db_session)
+    note_id: int, db: AsyncSession = Depends(session_manager.get_session)
 ):
     """Get note from DB by id"""
     note = await db.get(Notes, note_id)
@@ -45,8 +47,10 @@ async def get_note_by_id(
     return note
 
 
-@router.get("/", response_model=List[NoteResponseSchema])
-async def get_all_notes(db: AsyncSession = Depends(get_db_session)):
+@router.get("/", response_model=list[NoteResponseSchema])
+async def get_all_notes(
+    db: AsyncSession = Depends(session_manager.get_session),
+):
     """Get all notes from DB"""
     result = await db.execute(select(Notes))
     notes = result.scalars()
@@ -56,8 +60,7 @@ async def get_all_notes(db: AsyncSession = Depends(get_db_session)):
 @router.post("/", response_model=NoteResponseSchema)
 async def create_note(
     note: BaseNoteSchema,
-    background_tasks: BackgroundTasks,
-    db: AsyncSession = Depends(get_db_session),
+    db: AsyncSession = Depends(session_manager.get_session),
 ):
     """Post new note to DB"""
     new_note = Notes(
@@ -68,9 +71,7 @@ async def create_note(
     try:
         await db.commit()
         await db.refresh(new_note)
-
-        background_tasks.add_task(create_embedding, new_note, db)
-
+        await create_embedding(new_note, db)
         return new_note
     except Exception as e:
         await db.rollback()
@@ -80,38 +81,11 @@ async def create_note(
         )
 
 
-async def create_embedding(note: Notes, db: AsyncSession):
-    """Split note to chunks, create embeddings and push to DB"""
-    chunk_ids, sentences_len, note_embeddings = get_embedding(note)
-
-    # Add all chunks embeddings to DB
-    for i in range(len(chunk_ids)):
-        note_content_embedding = NotesContentEmbeddings(
-            note_id=note.id,
-            chunk_index=i,
-            embedding=note_embeddings[i],
-            chunk_start_position=chunk_ids[i],
-            chunk_end_position=chunk_ids[i] + sentences_len[i],
-        )
-
-        db.add(note_content_embedding)
-        try:
-            await db.commit()
-            await db.refresh(note_content_embedding)
-        except Exception as e:
-            await db.rollback()
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Error creating note embedding: {e!s}",
-            )
-
-
 @router.put("/{note_id}", response_model=NoteResponseSchema)
 async def update_note(
     note_id: int,
     note: BaseNoteSchema,
-    background_tasks: BackgroundTasks,
-    db: AsyncSession = Depends(get_db_session),
+    db: AsyncSession = Depends(session_manager.get_session),
 ):
     """Update note content or title"""
     updated_note = Notes(title=note.title, content=note.content)
@@ -121,7 +95,7 @@ async def update_note(
         raise HTTPException(status_code=404, detail="Note not found")
 
     if hash_has_changed(updated_note, db_note):
-        background_tasks.add_task(create_embedding, updated_note, db)
+        await create_embedding(updated_note, db)
         db_note.hash = compute_note_hash(updated_note)
 
     db_note.title = updated_note.title
@@ -140,10 +114,10 @@ async def update_note(
         )
 
 
-@router.post("/search", response_model=List[SimilarNotesSchema])
+@router.post("/search", response_model=list[SimilarNotesSchema])
 async def similar_note(
     input_item: BaseNoteSchema | PromptSchema,
-    db: AsyncSession = Depends(get_db_session),
+    db: AsyncSession = Depends(session_manager.get_session),
 ):
     """Finds semantically similar notes to input_item [Query or Note] in the database"""
     _, _, note_embedding = get_embedding(input_item)
@@ -156,7 +130,8 @@ async def similar_note(
 
 @router.post("/ask_similar", response_model=SummarizeNotesSchema)
 async def ask_from_similar_notes(
-    prompt: PromptSchema, db: AsyncSession = Depends(get_db_session)
+    prompt: PromptSchema,
+    db: AsyncSession = Depends(session_manager.get_session),
 ):
     similar_notes = await similar_note(prompt, db)
     async with httpx.AsyncClient() as client:
@@ -191,7 +166,7 @@ async def summarize_note(note: BaseNoteSchema):
 
 @router.delete("/{note_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_note_by_id(
-    note_id: int, db: AsyncSession = Depends(get_db_session)
+    note_id: int, db: AsyncSession = Depends(session_manager.get_session)
 ):
     try:
         await db.execute(
