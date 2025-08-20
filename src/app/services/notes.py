@@ -1,12 +1,12 @@
 import re
+from collections import defaultdict
 from typing import Any
 
 import numpy as np
-from fastapi import (
-    HTTPException,
-    status,
-)
+import torch
+from fastapi import HTTPException, status
 from sentence_transformers import SentenceTransformer
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.notes import Notes, NotesContentEmbeddings
@@ -16,20 +16,92 @@ from app.schemas.notes import (
     PromptSchema,
     SimilarNotesSchema,
 )
+from app.utils.hashing import compute_note_hash, hash_has_changed
 
 model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
 
 
 async def create_note(note: BaseNoteSchema, db: AsyncSession) -> Notes:
-    db_note = Notes(title=note.title, content=note.content, hash="temp_hash")
-    db.add(db_note)
-    await db.commit()
-    await db.refresh(db_note)
-    return db_note
+    new_note = Notes(
+        title=note.title, content=note.content, hash=compute_note_hash(note)
+    )
+    db.add(new_note)
+
+    try:
+        await db.commit()
+        await db.refresh(new_note)
+        await create_embedding(new_note, db)
+        return new_note
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Error creating note: {e!s}",
+        )
 
 
-async def get_note_by_id(note_id: int, db: AsyncSession) -> Notes | None:
-    return await db.get(Notes, note_id)
+async def get_note_by_id(note_id: int, db: AsyncSession) -> Notes:
+    note = await db.get(Notes, note_id)
+    if not note:
+        raise HTTPException(status_code=404, detail="Note not found")
+    return note
+
+
+async def get_all_notes(db: AsyncSession) -> list[Notes]:
+    result = await db.execute(select(Notes))
+    notes = list(result.scalars().all())
+    return notes
+
+
+async def update_note(
+    note_id: int, note: BaseNoteSchema, db: AsyncSession
+) -> Notes:
+    updated_note = Notes(title=note.title, content=note.content)
+
+    db_note = await db.get(Notes, note_id)
+    if not db_note:
+        raise HTTPException(status_code=404, detail="Note not found")
+
+    if hash_has_changed(updated_note, db_note):
+        await create_embedding(updated_note, db)
+        db_note.hash = compute_note_hash(updated_note)
+
+    db_note.title = updated_note.title
+    db_note.content = updated_note.content
+
+    try:
+        await db.commit()
+        await db.refresh(db_note)
+        return db_note
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Error updating the note: {e!s}",
+        )
+
+
+async def delete_note_by_id(note_id: int, db: AsyncSession):
+    try:
+        await db.execute(
+            delete(NotesContentEmbeddings).where(
+                NotesContentEmbeddings.note_id == note_id
+            )
+        )
+
+        db_note = await db.get(Notes, note_id)
+        if not db_note:
+            raise HTTPException(status_code=404, detail="Note not found")
+
+        await db.delete(db_note)
+        await db.commit()
+
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error deleting note: {e!s}",
+        )
 
 
 async def get_similar_notes(
@@ -42,10 +114,6 @@ async def get_similar_notes(
     query_embeddings: numpy array (m x d), m sentences in query note
     db_sentence_embeddings: list of objects with .embedding (d,), .note_id
     """
-    from collections import defaultdict
-
-    import torch
-
     # Convert to tensors
     query_tensor = torch.tensor(query_embeddings)  # (m, d)
     db_embeddings_list = [emb.embedding for emb in db_sentence_embeddings]

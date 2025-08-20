@@ -6,7 +6,7 @@ from fastapi import (
     Response,
     status,
 )
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.chat_requests import handle_gemini_request
@@ -16,7 +16,7 @@ from app.ai.prompt_templates import (
 )
 from app.config.logger import get_logger
 from app.core.database import session_manager
-from app.models.notes import Notes, NotesContentEmbeddings
+from app.models.notes import NotesContentEmbeddings
 from app.schemas.notes import (
     BaseNoteSchema,
     NoteResponseSchema,
@@ -25,11 +25,14 @@ from app.schemas.notes import (
     SummarizeNotesSchema,
 )
 from app.services.notes import (
-    create_embedding,
+    create_note,
+    delete_note_by_id,
+    get_all_notes,
     get_embedding,
+    get_note_by_id,
     get_similar_notes,
+    update_note,
 )
-from app.utils.hashing import compute_note_hash, hash_has_changed
 
 logger = get_logger(__name__)
 
@@ -37,81 +40,38 @@ router = APIRouter(prefix="/notes", tags=["Notes"])
 
 
 @router.get("/{note_id}", response_model=NoteResponseSchema)
-async def get_note_by_id(
+async def read_note_by_id(
     note_id: int, db: AsyncSession = Depends(session_manager.get_session)
 ):
     """Get note from DB by id"""
-    note = await db.get(Notes, note_id)
-    if not note:
-        raise HTTPException(status_code=404, detail="Note not found")
-    return note
+    return await get_note_by_id(note_id, db)
 
 
 @router.get("/", response_model=list[NoteResponseSchema])
-async def get_all_notes(
+async def read_all_notes(
     db: AsyncSession = Depends(session_manager.get_session),
 ):
     """Get all notes from DB"""
-    result = await db.execute(select(Notes))
-    notes = result.scalars()
-    return notes
+    return await get_all_notes(db)
 
 
 @router.post("/", response_model=NoteResponseSchema)
-async def create_note(
+async def create_new_note(
     note: BaseNoteSchema,
     db: AsyncSession = Depends(session_manager.get_session),
 ):
     """Post new note to DB"""
-    new_note = Notes(
-        title=note.title, content=note.content, hash=compute_note_hash(note)
-    )
-    db.add(new_note)
-
-    try:
-        await db.commit()
-        await db.refresh(new_note)
-        await create_embedding(new_note, db)
-        return new_note
-    except Exception as e:
-        await db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Error creating note: {e!s}",
-        )
+    return await create_note(note, db)
 
 
 @router.put("/{note_id}", response_model=NoteResponseSchema)
-async def update_note(
+async def update_existing_note(
     note_id: int,
     note: BaseNoteSchema,
     db: AsyncSession = Depends(session_manager.get_session),
 ):
     """Update note content or title"""
-    updated_note = Notes(title=note.title, content=note.content)
-
-    db_note = await db.get(Notes, note_id)
-    if not db_note:
-        raise HTTPException(status_code=404, detail="Note not found")
-
-    if hash_has_changed(updated_note, db_note):
-        await create_embedding(updated_note, db)
-        db_note.hash = compute_note_hash(updated_note)
-
-    db_note.title = updated_note.title
-    db_note.content = updated_note.content
-
-    try:
-        await db.commit()
-        await db.refresh(db_note)
-
-        return db_note
-    except Exception as e:
-        await db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Error updating the note: {e!s}",
-        )
+    return await update_note(note_id, note, db)
 
 
 @router.post("/search", response_model=list[SimilarNotesSchema])
@@ -165,32 +125,8 @@ async def summarize_note(note: BaseNoteSchema):
 
 
 @router.delete("/{note_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_note_by_id(
+async def delete_note(
     note_id: int, db: AsyncSession = Depends(session_manager.get_session)
 ):
-    try:
-        await db.execute(
-            delete(NotesContentEmbeddings).where(
-                NotesContentEmbeddings.note_id == note_id
-            )
-        )
-
-        # Get the note using async method
-        db_note = await db.get(Notes, note_id)
-        if not db_note:
-            raise HTTPException(status_code=404, detail="Note not found")
-
-        # Delete the note
-        await db.delete(db_note)
-
-        # Commit the transaction
-        await db.commit()
-
-        return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-    except Exception as e:
-        await db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error deleting note: {e!s}",
-        )
+    await delete_note_by_id(note_id, db)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
