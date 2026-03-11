@@ -124,9 +124,9 @@ async def summarize_note(note: BaseNoteSchema):
     )
 
 
-@router.delete("/{note_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{note_id}", status_code=status.HTTP_202_ACCEPTED)
 async def delete_note(
     note_id: int, db: AsyncSession = Depends(session_manager.get_session)
 ):
     await delete_note_by_id(note_id, db)
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+    return Response(status_code=status.HTTP_202_ACCEPTED)
