@@ -1,7 +1,7 @@
 FROM python:3.13.7-slim
 
 # Set working directory
-WORKDIR /app/
+WORKDIR /app
 
 # Install uv
 # Ref: https://docs.astral.sh/uv/guides/integration/docker/#installing-uv
@@ -17,8 +17,8 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
     uv sync --frozen --no-install-project
 
-COPY ./pyproject.toml ./uv.lock /app/
-COPY ./app /app/app
+COPY pyproject.toml uv.lock ./
+COPY . .
 
 # Sync project dependencies
 RUN --mount=type=cache,target=/root/.cache/uv \
