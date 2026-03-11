@@ -1,8 +1,6 @@
 import os
 from collections.abc import AsyncGenerator
-from typing import Optional
 
-from app.config.logger import get_logger
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -10,6 +8,8 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 from sqlalchemy.pool import AsyncAdaptedQueuePool
+
+from app.config.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -19,12 +19,10 @@ class SessionManager:
     """Manages asynchronous DB sessions with connection pooling."""
 
     def __init__(self) -> None:
-        self.engine: Optional[AsyncEngine] = None
-        self.session_factory: Optional[async_sessionmaker[AsyncSession]] = None
+        self.engine: AsyncEngine | None = None
+        self.session_factory: async_sessionmaker[AsyncSession] | None = None
 
-    def init_db(
-        self, database_url: Optional[str] = None, is_test=False
-    ) -> None:
+    def init_db(self, database_url: str | None = None, is_test=False) -> None:
         """Initialize the database engine and session factory."""
         logger.info("Initializing DB")
         if not database_url:
@@ -58,10 +56,11 @@ class SessionManager:
         )
 
         self.session_factory = async_sessionmaker(
-            self.engine,
+            bind=self.engine,
+            class_=AsyncSession,
             expire_on_commit=False,
             autoflush=False,
-            class_=AsyncSession,
+            close_resets_only=False,
         )
 
     async def close(self) -> None:
@@ -71,7 +70,7 @@ class SessionManager:
             await self.engine.dispose()
             logger.info("Database engine closed.")
 
-    async def get_session(self) -> AsyncGenerator[AsyncSession, None]:
+    async def get_session(self) -> AsyncGenerator[AsyncSession]:
         """Yield a database session."""
         if not self.session_factory:
             raise RuntimeError("Database session factory is not initialized.")
@@ -87,4 +86,3 @@ class SessionManager:
 
 
 session_manager = SessionManager()
-session_manager.init_db()
