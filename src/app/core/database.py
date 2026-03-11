@@ -86,4 +86,3 @@ class SessionManager:
 
 
 session_manager = SessionManager()
-session_manager.init_db()

@@ -92,7 +92,7 @@ dependencies = [
     "uvicorn==0.34.3",
     "wcwidth==0.2.13",
 ]
-
+ 
 
 [tool.pyright]
 venvPath = ".venv"

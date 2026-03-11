@@ -1,13 +1,24 @@
 import time
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
 
 from app.api.v1.router import api_router
 from app.config.logger import get_logger, setup_logging
 from app.config.settings import settings
-from fastapi import FastAPI
+from app.core.database import session_manager
 
 setup_logging(log_level=settings.log_level, log_format=settings.log_format)
 
 logger = get_logger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app):
+    session_manager.init_db()
+    yield
+    await session_manager.close()
+
 
 app = FastAPI(
     title=settings.app_name,
@@ -16,6 +27,7 @@ app = FastAPI(
     docs_url=settings.docs_url,
     redoc_url=settings.redoc_url,
     openapi_url=settings.openapi_url,
+    lifespan=lifespan,
 )
 
 app.include_router(api_router, prefix=f"{settings.api_prefix}")
